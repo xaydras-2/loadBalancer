@@ -4,7 +4,7 @@ A Go-based load balancer that automatically scales Docker containers based on tr
 
 ## Features
 
-- **HTTP Request Distribution**: Routes incoming requests using Round Robbin.
+- **HTTP Request Distribution**: Routes incoming requests using Round Robin.
 - **Auto-Scaling**: Dynamically scales up or down Docker container replicas based on configurable traffic thresholds.
 - **Monitoring & Reporting**: Tracks request rates, latency, and container counts; generates performance reports.
 - **Load Testing Integration**: Includes K6 scripts for performance evaluation.
@@ -18,28 +18,28 @@ A Go-based load balancer that automatically scales Docker containers based on tr
 ## Installation
 
 1. **Clone the repository**
-   ```bash
-   git clone https://github.com/xaydras-2/loadBalancer.git
-   cd loadBalancer
-   ```
+    ```bash
+    git clone https://github.com/xaydras-2/loadBalancer.git
+    cd loadBalancer
+    ```
 
 2. **Build the application**
-   ```bash
-   go build -o loadBalancer .
-   ```
+    ```bash
+    go build -o loadBalancer .
+    ```
 
 ## Usage
 
 1. **Start the load balancer**
-   ```bash
-   ./loadBalancer
-   ```
+    ```bash
+    ./loadBalancer
+    ```
 
 2. **Access the service**
-   The load balancer listens on port **8080** by default:
-   ```
-   http://localhost:8080
-   ```
+    The load balancer listens on port **8080** by default:
+    ```
+    http://localhost:8080
+    ```
 
 ## Configuration
 
@@ -56,52 +56,54 @@ Configuration parameters can be adjusted in the source files:
 
 The auto-scaling logic is implemented in `App/functions/auto_scaling.go`. It:
 
-1. Create a new Docker container.
-2. Can remove a container by it's id.
+1. Creates a new Docker container.
+2. Can remove a container by its ID.
 
 ## Load Balancer
 
 The LB logic is implemented in `App/functions/loadBalancer.go`. It:
 
-1. handle traffic via a proxy handler
-2. Check the health of each backend using Round Robbin(RR) method
-3. it picks the healthiest backend
-4. if none it returns an error
+1. Handles traffic via a proxy handler.
+2. Checks the health of each backend using the Round Robin (RR) method.
+3. Picks the healthiest backend.
+4. If none are healthy, it returns an error.
 
 ## The main file
-(e.g i know that it isn't ideal to load up the main with function, i know that each function and code block should be in a different file for readability)
-The main file in `App/main.go`. It can:
 
-1. demands to the auto_scaling to create a given initial set of containers
-2. check if the LB is always handling the traffic, if an error accrued because of no free Backend it signals the auto_scaling to create a new backend
-3. see if the load has been reduced, it tells the auto_scaling to remove a container by it's id.
+*(Note: I know that it is not ideal to load up the main file with functions, and that each function and code block should be in a different file for readability.)*
+
+The main file is `App/main.go`. It can:
+
+1. Instruct the auto_scaling logic to create a given initial set of containers.
+2. Check if the LB is always handling the traffic. If an error occurs because there are no free backends, it signals auto_scaling to create a new backend.
+3. If the load is reduced, it tells auto_scaling to remove a container by its ID.
 
 ## Load Testing
 
 Load testing is performed using K6. The default script is located at `Test/loadtest.js`.
 
 1. **Install K6**
-   ```bash
-   # macOS
-   brew install k6
+    ```bash
+    # macOS
+    brew install k6
 
-   # Windows
-   choco install k6
+    # Windows
+    choco install k6
 
-   # Linux
-   sudo apt-get install k6
-   ```
+    # Linux
+    sudo apt-get install k6
+    ```
 
 2. **Run the test**
-   ```bash
-   k6 run --out json=report.json Test/loadtest.js
-   ```
+    ```bash
+    k6 run --out json=report.json Test/loadtest.js
+    ```
 
 3. **View the report**
-   After completion, open the HTML report:
-   ```bash
-   open Test/summary.html
-   ```
+    After completion, open the HTML report:
+    ```bash
+    open Test/summary.html
+    ```
 
 ### Default Load Test Parameters
 
@@ -114,7 +116,7 @@ Modify `Test/loadtest.js` to change these settings.
 
 ## Quick note
 
-it's still under development, i know that it can be more optimized.
+It's still under development. I know that it can be more optimized.
 
 ## Contributing
 
@@ -133,5 +135,4 @@ This project is licensed under the Apache License 2.0. See the [LICENSE](LICENSE
 ## Contact
 
 Maintained by **Belqadi Ayman**. Feel free to open issues or reach out via GitHub.
-
 

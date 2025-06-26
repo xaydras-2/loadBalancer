@@ -56,7 +56,7 @@ Configuration parameters can be adjusted in the source files:
 
 The auto-scaling logic is implemented in `App/functions/auto_scaling.go`. It:
 
-1. Create a new Docker container is spawned.
+1. Create a new Docker container.
 2. Can remove a container by it's id.
 
 ## Load Balancer
@@ -70,11 +70,11 @@ The LB logic is implemented in `App/functions/loadBalancer.go`. It:
 
 ## The main file
 (e.g i know that it isn't ideal to load up the main with function, i know that each function and code block should be in a different file for readability)
-The LB logic is implemented in `App/main.go`. It:
+The main file in `App/main.go`. It can:
 
-1. it demands to the auto_scaling to create a given initial set of containers
-2. it check if the LB is always handling the traffic, if an error accrued because of no free Backend it signals the auto_scaling to create a new backend
-3. if the load has been reduced, it tells the auto_scaling to remove a container by it's id.
+1. demands to the auto_scaling to create a given initial set of containers
+2. check if the LB is always handling the traffic, if an error accrued because of no free Backend it signals the auto_scaling to create a new backend
+3. see if the load has been reduced, it tells the auto_scaling to remove a container by it's id.
 
 ## Load Testing
 

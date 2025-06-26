@@ -17,11 +17,20 @@ import (
 )
 
 var (
-	httpClient = &http.Client{Timeout: 2 * time.Second}
-	rrCounter  int64
+	httpClient = &http.Client{
+		Timeout: 500 * time.Millisecond,
+		Transport: &http.Transport{
+			MaxIdleConnsPerHost: 100,
+			IdleConnTimeout:     30 * time.Second,
+			DisableKeepAlives:   false, // ensure keep-alive
+		},
+	}
+	rrCounter int64
 )
 
-// checkAlive does a HEAD request, returns whether it's up plus the latency.
+// checkAlive sends a GET request to the given backend's /healthz page and
+// returns whether the response was successful (200-399), the latency of the
+// request, and any error that occurred.
 func checkAlive(b *structers.Backend) (bool, time.Duration, error) {
 	healthURL := b.URL.ResolveReference(&url.URL{Path: "/healthz"})
 	req, err := http.NewRequest(http.MethodGet, healthURL.String(), nil)

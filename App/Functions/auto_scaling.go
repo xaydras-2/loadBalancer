@@ -57,7 +57,7 @@ func CreateReplicas(imageName string, containerPort, hostPort string) (string, *
 		ctx,
 		&container.Config{
 			Image:        imageName,
-			Cmd: []string{ "--port", containerPort},
+			Cmd:          []string{"--port", containerPort},
 			ExposedPorts: exposed,
 		},
 		&container.HostConfig{
@@ -91,7 +91,6 @@ func CreateReplicas(imageName string, containerPort, hostPort string) (string, *
 
 	return containerID, backend, nil
 }
-
 
 func CloseReplicas(containerID string) (string, error) {
 	ctx := context.Background()

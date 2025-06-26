@@ -4,7 +4,7 @@ A Go-based load balancer that automatically scales Docker containers based on tr
 
 ## Features
 
-- **HTTP Request Distribution**: Routes incoming requests uniformly or via chosen load balancing algorithm across backend containers.
+- **HTTP Request Distribution**: Routes incoming requests using Round Robbin.
 - **Auto-Scaling**: Dynamically scales up or down Docker container replicas based on configurable traffic thresholds.
 - **Monitoring & Reporting**: Tracks request rates, latency, and container counts; generates performance reports.
 - **Load Testing Integration**: Includes K6 scripts for performance evaluation.

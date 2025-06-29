@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"os"
 
+	"encoding/json"
+
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
@@ -112,4 +114,57 @@ func CloseReplicas(containerID string) (string, error) {
 	}
 
 	return fmt.Sprintf("Container %q stopped and removed successfully", containerID), nil
+}
+
+// gets the cpu and memory of a given container id
+func GetInfoAboutReplica(containerID string) (*structers.ReplicaStats, error) {
+	ctx := context.Background()
+
+	// initialize Docker client
+	cli, err := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("docker client init: %w", err)
+	}
+	defer cli.Close()
+
+	// fetch one-shot stats (non-streaming)
+	statsRes, err := cli.ContainerStats(ctx, containerID, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stats: %w", err)
+	}
+	defer statsRes.Body.Close()
+
+	// decode into StatsJSON
+	var s structers.StatsJSON
+	if err := json.NewDecoder(statsRes.Body).Decode(&s); err != nil {
+		return nil, fmt.Errorf("failed to decode stats: %w", err)
+	}
+
+	// calculate CPU %
+	cpuDelta := float64(s.CPUStats.CPUUsage.TotalUsage - s.PreCPUStats.CPUUsage.TotalUsage)
+	systemDelta := float64(s.CPUStats.SystemUsage - s.PreCPUStats.SystemUsage)
+	cpuPercent := 0.0
+	if systemDelta > 0.0 && cpuDelta > 0.0 {
+		cpuCount := float64(len(s.CPUStats.CPUUsage.PercpuUsage))
+		cpuPercent = (cpuDelta / systemDelta) * cpuCount * 100.0
+	}
+
+	// calculate Memory %
+	// subtract cache to get the real cache
+	memUsage := s.MemoryStats.Usage - s.MemoryStats.Stats["cache"]
+	memLimit := s.MemoryStats.Limit
+	memPercent := 0.0
+	if memLimit > 0 {
+		memPercent = (float64(memUsage) / float64(memLimit)) * 100.0
+	}
+
+	return &structers.ReplicaStats{
+		CPUPercent:    cpuPercent,
+		MemoryUsage:   memUsage,
+		MemoryLimit:   memLimit,
+		MemoryPercent: memPercent,
+	}, nil
 }

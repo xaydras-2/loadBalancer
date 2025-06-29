@@ -29,8 +29,10 @@ go.work.sum
 
 # Editor/IDE
 # .idea/
-# .vscode/
+.vscode/
 
 API/bin
 API/obj
 API/API.csproj
+
+

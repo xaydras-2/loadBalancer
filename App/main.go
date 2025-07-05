@@ -1,32 +1,29 @@
 package main
 
 import (
+	"container/heap"
 	"context"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/xaydras-2/loadBalancer/App/config"
 	"github.com/xaydras-2/loadBalancer/App/functions"
-	"github.com/xaydras-2/loadBalancer/App/structers"
 )
 
 func main() {
 
 	// 1. Start initial replicas
 	for i := 0; i < config.InitialReplicas; i++ {
-		port := strconv.Itoa(config.StartPort + i)
-		cid, be, err := functions.CreateReplicas(config.ImageName, config.ContainerPort, port)
+		be, err := functions.CreateReplicas(config.ImageName, config.ContainerPort)
 		if err != nil {
 			log.Fatalf("failed to create replica: %v", err)
 		}
-		config.Backends = append(config.Backends, be)
-		config.Containers = append(config.Containers, cid)
+		heap.Push(&config.Backends, be)
 	}
 
 	// 2. Start auto-scaler
@@ -34,25 +31,29 @@ func main() {
 	// 2.1 Start the active monitoring (AM) load balancer
 	go functions.AMLB()
 
+	// start the health checking
+	go functions.StartHealthChecker()
+
 	// 3. HTTP server
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// increment atomically
 		atomic.AddInt64(&config.ReqCount, 1)
-
-		// take snapshot under lock
-		config.BackendsMu.Lock()
-		snapshot := make([]*structers.Backend, len(config.Backends))
-		copy(snapshot, config.Backends)
-		config.BackendsMu.Unlock()
-
-		functions.ProxyHandler(&snapshot)(w, r)
+		functions.ProxyHandler()(w, r)
 	})
 
 	srv := &http.Server{
 		Addr:    ":8080",
 		Handler: mux,
 	}
+
+	// go func() {
+	// 	ticker := time.NewTicker(1 * time.Second)
+	// 	defer ticker.Stop()
+	// 	for range ticker.C {
+	// 		log.Printf("Backends %v", config.Backends)
+	// 	}
+	// }()
 
 	// 4. Graceful shutdown setup
 	stop := make(chan os.Signal, 1)
@@ -79,9 +80,9 @@ func main() {
 
 	// 5. Tear down containers
 	log.Println("Stopping backend containers…")
-	for _, cid := range config.Containers {
-		if msg, err := functions.CloseReplicas(cid); err != nil {
-			log.Printf("error closing %s: %v", cid, err)
+	for _, b := range config.Backends {
+		if msg, err := functions.CloseReplicas(b.ContainerID); err != nil {
+			log.Printf("error closing %s: %v", b.ContainerID, err)
 		} else {
 			log.Printf("Container closed: %s", msg)
 		}

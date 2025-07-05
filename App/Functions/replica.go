@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"time"
 
 	"encoding/json"
 
@@ -20,41 +21,41 @@ import (
 
 // CreateReplicas spins up one new container instance of your API, listening
 // on the given hostPort, and returns a Backend pointing to it.
-func CreateReplicas(imageName string, containerPort, hostPort string) (string, *structers.Backend, error) {
+func CreateReplicas(imageName string, containerPort string) (*structers.Backend, error) {
 	ctx := context.Background()
 
-	// 1. Create Docker client
+	// Create Docker client
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		return "", nil, fmt.Errorf("docker client init: %w", err)
+		return nil, fmt.Errorf("docker client init: %w", err)
 	}
 	defer cli.Close()
 
-	// 2. Pull image if missing
+	// Pull image if missing
 	imgs, err := cli.ImageList(ctx, image.ListOptions{
 		All:     true,
 		Filters: filters.NewArgs(filters.Arg("reference", imageName)),
 	})
 	if err != nil {
-		return "", nil, fmt.Errorf("image list: %w", err)
+		return nil, fmt.Errorf("image list: %w", err)
 	}
 	if len(imgs) == 0 {
 		out, err := cli.ImagePull(ctx, imageName, image.PullOptions{})
 		if err != nil {
-			return "", nil, fmt.Errorf("image pull: %w", err)
+			return nil, fmt.Errorf("image pull: %w", err)
 		}
 		io.Copy(os.Stdout, out)
 		out.Close()
 	}
 
-	// 3. Set up port mapping
+	// Set up port mapping
 	portKey := nat.Port(containerPort + "/tcp")
 	exposed := nat.PortSet{portKey: struct{}{}}
 	bindings := nat.PortMap{portKey: []nat.PortBinding{
-		{HostIP: "0.0.0.0", HostPort: hostPort},
+		{HostIP: "0.0.0.0", HostPort: ""},
 	}}
 
-	// 4. Create the container
+	// Create the container
 	resp, err := cli.ContainerCreate(
 		ctx,
 		&container.Config{
@@ -70,28 +71,51 @@ func CreateReplicas(imageName string, containerPort, hostPort string) (string, *
 		"",  // container name
 	)
 	if err != nil {
-		return "", nil, fmt.Errorf("container create: %w", err)
+		return nil, fmt.Errorf("container create: %w", err)
 	}
 
-	// 5. Start the container
+	// Start the container
 	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
-		return "", nil, fmt.Errorf("container start: %w", err)
+		return nil, fmt.Errorf("container start: %w", err)
 	}
 
 	containerID := resp.ID
 
-	// 6. Build the Backend struct pointing at our new instance
-	urlStr := fmt.Sprintf("http://localhost:%s", hostPort)
-	parsed, err := url.Parse(urlStr)
-	if err != nil {
-		return "", nil, fmt.Errorf("invalid URL %q: %w", urlStr, err)
-	}
-	backend := &structers.Backend{
-		URL:   parsed,
-		Alive: true, // default to true, health will be checked by the LoadBalancer
+	portExtKey := nat.Port(containerPort + "/tcp")
+	var hostPort string
+
+	const (
+		maxRetries = 10
+		sleepMs    = 100
+	)
+	for i := 0; i < maxRetries; i++ {
+		insp, err := cli.ContainerInspect(ctx, resp.ID)
+		if err != nil {
+			return nil, fmt.Errorf("inspect container (attempt %d): %w", i+1, err)
+		}
+		bindings := insp.NetworkSettings.Ports[portExtKey]
+		if len(bindings) > 0 && bindings[0].HostPort != "" {
+			hostPort = bindings[0].HostPort
+			break
+		}
+		time.Sleep(sleepMs * time.Millisecond)
 	}
 
-	return containerID, backend, nil
+	// Build the Backend struct pointing at our new instance
+	urlStr := fmt.Sprintf("http://localhost:%s", hostPort)
+	parsed, err := url.Parse(urlStr)
+
+	if err != nil {
+		return nil, fmt.Errorf("invalid URL %q: %w", urlStr, err)
+	}
+
+	backend := &structers.Backend{
+		URL:         parsed,
+		Alive:       true, // default to true, health will be checked by the LoadBalancer
+		ContainerID: containerID,
+	}
+
+	return backend, nil
 }
 
 func CloseReplicas(containerID string) (string, error) {

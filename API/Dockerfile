@@ -12,16 +12,11 @@ COPY . ./
 # Build the application
 RUN dotnet publish -c Release -o out
 
-# Use the official .NET runtime image for running the app
-FROM mcr.microsoft.com/dotnet/runtime:9.0
+# Use the official .NET ASP.NET Core runtime image for running the app
+FROM mcr.microsoft.com/dotnet/aspnet:9.0
 WORKDIR /app
-COPY --from=build /app/out ./
 
-# Expose the port your app listens on
-EXPOSE 8080
-
-ENV DOTNET_SYSTEM_NET_HTTP_USESOCKETSHTTPHANDLER=0
-
+COPY --from=build /app/out .
 
 # Run the application
 ENTRYPOINT ["dotnet", "API.dll"]

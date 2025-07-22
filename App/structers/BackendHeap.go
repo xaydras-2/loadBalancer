@@ -1,3 +1,4 @@
+// Package structers defines core data structures used by the load balancer.
 package structers
 
 import (
@@ -14,11 +15,30 @@ func (h BackendHeap) Len() int {
 	return len(h)
 }
 
-// Less is part of the heap.Interface and is used to compare two backends in the heap based on their current load.
-// It returns true if the backend at index i has a lower current load than the backend at index j.
+// Less compares two backends based first on health (alive backends before dead ones),
+// then by current load (lower load has higher priority).
 func (h BackendHeap) Less(i, j int) bool {
-	return atomic.LoadInt64(&h[i].CurrentLoad) < atomic.LoadInt64(&h[j].CurrentLoad)
+    bi, bj := h[i], h[j]
+
+    // 1) Shutting‑down lanes last
+    if bi.ShuttingDown != bj.ShuttingDown {
+        return bi.ShuttingDown == 0 && bj.ShuttingDown == 1
+    }
+
+    // 2) Ill (failing probe) next worst
+    if bi.Ill != bj.Ill {
+        return !bi.Ill && bj.Ill
+    }
+
+    // 3) Alive vs dead
+    if bi.Alive != bj.Alive {
+        return bi.Alive && !bj.Alive
+    }
+
+    // 4) Both in same health/shutdown bucket → compare load
+    return atomic.LoadInt64(&bi.CurrentLoad) < atomic.LoadInt64(&bj.CurrentLoad)
 }
+
 
 // Swap is part of the heap.Interface and is used to swap two backends in the heap.
 // It updates the heap indices of the swapped backends.

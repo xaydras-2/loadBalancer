@@ -1,3 +1,5 @@
+// Package functions implements core logic for active monitoring, load balancing,
+// and auto-scaling of back-end services.
 package functions
 
 import (

@@ -2,22 +2,16 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using API.http.Models;
+using API.database.repository;
 
 namespace API.http.Controllers
 {
     public class ApiController
     {
-        private readonly List<User> users;
+        private readonly List<User>? users;
+        private static readonly JsonSerializerOptions JsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
-        public ApiController()
-        {
-            // Initialize with some sample data
-            users = new List<User>
-        {
-            new User { Id = 1, Name = "John Doe", Email = "john@example.com" },
-            new User { Id = 2, Name = "Jane Smith", Email = "jane@example.com" }
-        };
-        }
+
 
         // Handle HTTP requests
         public async Task HandleRequest(HttpListenerContext context)
@@ -46,45 +40,52 @@ namespace API.http.Controllers
                 string responseText = "";
                 response.ContentType = "application/json";
 
-                if (method == "GET" && path == "/healthz")
-                {
-                    // Immediately return 200 OK with a tiny payload
-                    response.StatusCode = 200;
-                    response.ContentType = "application/json";
-                    var healthy = JsonSerializer.Serialize(new { status = "ok" });
-                    var data = Encoding.UTF8.GetBytes(healthy);
-                    response.ContentLength64 = data.Length;
-                    await response.OutputStream.WriteAsync(data, 0, data.Length);
-                    response.Close();
-                    return;
-                }
 
-                // Route requests
-                switch ($"{method} {path}")
+                switch (method)
                 {
-                    case "GET /api/users":
+                    case "GET" when path == "/healthz":
+                        {
+                            // Immediately return 200 OK with a tiny payload
+                            response.StatusCode = 200;
+                            response.ContentType = "application/json";
+                            var healthy = JsonSerializer.Serialize(new { status = "ok" });
+                            var data = Encoding.UTF8.GetBytes(healthy);
+                            response.ContentLength64 = data.Length;
+                            await response.OutputStream.WriteAsync(data.AsMemory(), CancellationToken.None);
+                            response.Close();
+                        }
+                        break;
+                    case "GET" when path.StartsWith("/api/users/"):
+                        {
+                            int userId = ExtractIdFromPath(path);
+                            responseText = GetUser(userId);
+                        }
+                        break;
+
+                    case "PUT" when path.StartsWith("/api/users/"):
+                        {
+                            int userId = ExtractIdFromPath(path);
+                            var body = await ReadRequestBody(request);
+                            responseText = UpdateUser(userId, body);
+                        }
+                        break;
+
+                    case "DELETE" when path.StartsWith("/api/users/"):
+                        {
+                            int userId = ExtractIdFromPath(path);
+                            responseText = DeleteUser(userId);
+                        }
+                        break;
+
+                    case "GET" when path == "/api/users":
                         responseText = GetAllUsers();
                         break;
 
-                    case "GET /api/users/{id}":
-                        int userId = ExtractIdFromPath(path);
-                        responseText = GetUser(userId);
-                        break;
-
-                    case "POST /api/users":
-                        string requestBody = await ReadRequestBody(request);
-                        responseText = CreateUser(requestBody);
-                        break;
-
-                    case "PUT /api/users/{id}":
-                        int updateId = ExtractIdFromPath(path);
-                        string updateBody = await ReadRequestBody(request);
-                        responseText = UpdateUser(updateId, updateBody);
-                        break;
-
-                    case "DELETE /api/users/{id}":
-                        int deleteId = ExtractIdFromPath(path);
-                        responseText = DeleteUser(deleteId);
+                    case "POST" when path == "/api/users":
+                        {
+                            var body = await ReadRequestBody(request);
+                            responseText = CreateUser(body);
+                        }
                         break;
 
                     default:
@@ -93,10 +94,11 @@ namespace API.http.Controllers
                         break;
                 }
 
+
                 // Send response
                 byte[] buffer = Encoding.UTF8.GetBytes(responseText);
                 response.ContentLength64 = buffer.Length;
-                await response.OutputStream.WriteAsync(buffer, 0, buffer.Length);
+                await response.OutputStream.WriteAsync(buffer.AsMemory(), CancellationToken.None);
             }
             catch (Exception ex)
             {
@@ -104,7 +106,7 @@ namespace API.http.Controllers
                 string errorResponse = JsonSerializer.Serialize(new { error = ex.Message });
                 byte[] errorBuffer = Encoding.UTF8.GetBytes(errorResponse);
                 response.ContentLength64 = errorBuffer.Length;
-                await response.OutputStream.WriteAsync(errorBuffer, 0, errorBuffer.Length);
+                await response.OutputStream.WriteAsync(errorBuffer.AsMemory(), CancellationToken.None);
             }
             finally
             {
@@ -116,12 +118,17 @@ namespace API.http.Controllers
         private string GetAllUsers()
         {
             Console.WriteLine("GetAllUsers has been called");
+            var users = UserRepository.All();
+            if (users == null)
+            {
+                return JsonSerializer.Serialize("Can't return all the users");
+            }
             return JsonSerializer.Serialize(users);
         }
 
         private string GetUser(int id)
         {
-            var user = users.Find(u => u.Id == id);
+            var user = UserRepository.GetById(id);
             if (user == null)
             {
                 return JsonSerializer.Serialize(new { error = "User not found" });
@@ -134,9 +141,12 @@ namespace API.http.Controllers
         {
             try
             {
-                var newUser = JsonSerializer.Deserialize<User>(requestBody);
-                newUser.Id = users.Count > 0 ? users.Max(u => u.Id) + 1 : 1;
-                users.Add(newUser);
+                var newUser = JsonSerializer.Deserialize<User>(requestBody, JsonOpts);
+                if (newUser == null)
+                {
+                    return JsonSerializer.Serialize("error the new user is null");
+                }
+                UserRepository.Add(newUser);
                 Console.WriteLine("CreateUser has been called");
                 return JsonSerializer.Serialize(newUser);
             }
@@ -150,15 +160,26 @@ namespace API.http.Controllers
         {
             try
             {
-                var user = users.Find(u => u.Id == id);
+                var user = UserRepository.GetById(id);
                 if (user == null)
                 {
                     return JsonSerializer.Serialize(new { error = "User not found" });
                 }
 
-                var updatedUser = JsonSerializer.Deserialize<User>(requestBody);
+                var updatedUser = JsonSerializer.Deserialize<User>(requestBody, JsonOpts);
+                if (updatedUser == null)
+                {
+                    var errorPayload = new
+                    {
+                        error = "Null when updating the user",
+                        userId = id,
+                        time = DateTime.UtcNow
+                    };
+                    return JsonSerializer.Serialize(errorPayload);
+                }
                 user.Name = updatedUser.Name ?? user.Name;
                 user.Email = updatedUser.Email ?? user.Email;
+                UserRepository.Update(user);
                 Console.WriteLine("UpdateUser has been called");
                 return JsonSerializer.Serialize(user);
             }
@@ -170,13 +191,13 @@ namespace API.http.Controllers
 
         private string DeleteUser(int id)
         {
-            var user = users.Find(u => u.Id == id);
+            var user = UserRepository.GetById(id);
             if (user == null)
             {
                 return JsonSerializer.Serialize(new { error = "User not found" });
             }
 
-            users.Remove(user);
+            UserRepository.Delete(id);
             Console.WriteLine("DeleteUser has been called");
             return JsonSerializer.Serialize(new { message = "User deleted successfully" });
         }

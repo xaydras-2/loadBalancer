@@ -12,9 +12,6 @@ This repository contains a scalable load balancer system implemented in Go, pair
   * [API Service](#api-service)
   * [Load Balancer (Go App)](#load-balancer-go-app)
 * [Running the Services](#running-the-services)
-
-  * [Using Docker Compose](#using-docker-compose)
-  * [Manual Startup](#manual-startup)
 * [Load Testing](#load-testing)
 * [Logs & Metrics](#logs--metrics)
 * [Database Migrations](#database-migrations)
